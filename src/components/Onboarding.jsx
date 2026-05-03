@@ -1,22 +1,49 @@
 import React, { useState } from 'react';
 
-const PIN_CODE_MAP = {
-  '110001': 'New Delhi',
-  '110002': 'Old Delhi',
-  '110003': 'Lodi Road',
-  '110004': 'Rashtrapati Bhawan',
-  '110005': 'Karol Bagh',
-  '110006': 'Chandni Chowk',
-};
-
 const Onboarding = ({ onComplete }) => {
   const [age, setAge] = useState('');
   const [pinCode, setPinCode] = useState('');
   const [error, setError] = useState('');
   const [showRefresherPrompt, setShowRefresherPrompt] = useState(false);
   const [mappedConstituency, setMappedConstituency] = useState('');
+  const [loadingLocation, setLoadingLocation] = useState(false);
 
-  const handleSubmit = (e) => {
+  const fetchConstituency = async (pin) => {
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+    if (!apiKey) {
+      console.warn("Google Maps API Key missing. Falling back to India Central.");
+      return "India Central";
+    }
+
+    try {
+      setLoadingLocation(true);
+      const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${pin},+India&key=${apiKey}`);
+      const data = await res.json();
+      
+      if (data.status === 'OK' && data.results.length > 0) {
+        // Find city/state from address components
+        const addressComponents = data.results[0].address_components;
+        let city = '';
+        let state = '';
+        
+        addressComponents.forEach(component => {
+          if (component.types.includes('locality')) city = component.long_name;
+          if (component.types.includes('administrative_area_level_1')) state = component.long_name;
+        });
+
+        return city ? `${city}, ${state}` : state || "India Central";
+      } else {
+        return "India Central";
+      }
+    } catch (err) {
+      console.error("Geocoding failed:", err);
+      return "India Central";
+    } finally {
+      setLoadingLocation(false);
+    }
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
@@ -27,11 +54,11 @@ const Onboarding = ({ onComplete }) => {
     }
 
     if (!pinCode || pinCode.length !== 6) {
-      setError('Please enter a valid 6-digit Delhi Pin Code.');
+      setError('Please enter a valid 6-digit Indian Pin Code.');
       return;
     }
 
-    const constituency = PIN_CODE_MAP[pinCode] || 'Delhi Central';
+    const constituency = await fetchConstituency(pinCode);
     setMappedConstituency(constituency);
 
     if (numAge < 18) {
@@ -79,7 +106,7 @@ const Onboarding = ({ onComplete }) => {
       <div className="bg-amber-50/80 border border-amber-200/60 p-4 mb-8 rounded-2xl flex items-start gap-3">
         <span className="text-amber-500 mt-0.5 text-lg">💡</span>
         <p className="text-sm text-amber-800 leading-relaxed font-medium">
-          Enter your details below to simulate the voting experience mapped to your local constituency.
+          Enter your details below to simulate the voting experience mapped to your local constituency anywhere in India.
         </p>
       </div>
 
@@ -93,18 +120,20 @@ const Onboarding = ({ onComplete }) => {
             className="glass-input"
             placeholder="e.g. 25"
             required
+            disabled={loadingLocation}
           />
         </div>
         <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Delhi Pin Code</label>
+          <label className="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">Indian Pin Code</label>
           <input 
             type="text" 
             value={pinCode}
             onChange={(e) => setPinCode(e.target.value.replace(/\D/g, '').slice(0,6))}
             className="glass-input"
-            placeholder="e.g. 110001"
+            placeholder="e.g. 400001"
             maxLength={6}
             required
+            disabled={loadingLocation}
           />
         </div>
         
@@ -115,8 +144,12 @@ const Onboarding = ({ onComplete }) => {
         )}
 
         <div className="pt-4">
-          <button type="submit" className="btn-primary">
-            Start Simulation
+          <button type="submit" className="btn-primary flex justify-center items-center h-12" disabled={loadingLocation}>
+            {loadingLocation ? (
+              <span className="animate-pulse">Locating...</span>
+            ) : (
+              "Start Simulation"
+            )}
           </button>
         </div>
       </form>

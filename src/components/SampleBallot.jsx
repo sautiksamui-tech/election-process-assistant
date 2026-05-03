@@ -1,26 +1,49 @@
-import React, { useState } from 'react';
-
-// Sorted alphabetically by candidate name
-const MOCK_CANDIDATES = [
-  { name: 'Arjun Rao', party: 'The Solar Front', symbol: '☀️' },
-  { name: 'Kabir Das', party: 'The Lunar Alliance', symbol: '🌙' },
-  { name: 'NOTA', party: 'None of the Above', symbol: '🗳️' },
-  { name: 'Priya Singh', party: 'The Nebula Coalition', symbol: '☁️' },
-];
+import React, { useState, useEffect } from 'react';
+import { generateCandidates } from '../utils/candidateGenerator';
+import { db } from '../firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 const SampleBallot = ({ constituency, navigateTo }) => {
   const [voting, setVoting] = useState(false);
   const [votedCandidate, setVotedCandidate] = useState(null);
+  const [candidates, setCandidates] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const handleVote = (candidate) => {
+  useEffect(() => {
+    const fetchCandidates = async () => {
+      const generated = await generateCandidates(constituency);
+      setCandidates(generated);
+      setLoading(false);
+    };
+    fetchCandidates();
+  }, [constituency]);
+
+  const handleVote = async (candidate) => {
     setVoting(true);
     setVotedCandidate(candidate);
+
+    // Write to Firestore if db is initialized (without awaiting so it doesn't block the UI)
+    if (db) {
+      addDoc(collection(db, "mockVotes"), {
+        constituency,
+        votedFor: candidate.name === 'NOTA' ? 'NOTA' : 'Generic Candidate', // keep strictly anonymous/generic
+        timestamp: serverTimestamp()
+      }).catch(e => console.error("Error writing to Firestore:", e));
+    }
     
-    // Simulate the VVPAT 7 second delay
     setTimeout(() => {
       navigateTo('exit');
     }, 7000);
   };
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 animate-fadeIn">
+        <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4"></div>
+        <p className="text-slate-500 font-medium animate-pulse">Generating dynamic ballot for {constituency}...</p>
+      </div>
+    );
+  }
 
   if (voting) {
     return (
@@ -53,7 +76,7 @@ const SampleBallot = ({ constituency, navigateTo }) => {
 
       <div className="bg-slate-200/80 p-3 rounded-2xl border-4 border-slate-300 max-w-sm mx-auto shadow-inner">
         <div className="bg-white rounded-xl overflow-hidden border border-slate-100 shadow-sm">
-          {MOCK_CANDIDATES.map((candidate, index) => (
+          {candidates.map((candidate, index) => (
             <div key={index} className="flex items-center justify-between border-b border-slate-100 last:border-0 p-4 hover:bg-slate-50 transition-colors">
               <div className="flex-1 text-left pr-4">
                 <p className="font-bold text-sm uppercase text-slate-800">{candidate.name}</p>
@@ -68,7 +91,6 @@ const SampleBallot = ({ constituency, navigateTo }) => {
                   className="evm-button relative"
                   aria-label={`Vote for ${candidate.name}`}
                 >
-                  {/* Small red light indicator simulation */}
                   <span className="absolute -left-5 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-slate-300 opacity-50"></span>
                 </button>
               </div>
